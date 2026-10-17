@@ -23,6 +23,9 @@ data class SettingsState(
     val manualClass: String? = null,
     /** Deck code pasted by the user for constructed games. */
     val manualDeckCode: String? = null,
+    /** Last position of the overlay HUD in pixels (-1 = default). */
+    val hudX: Int = -1,
+    val hudY: Int = -1,
 )
 
 class Settings(context: Context) {
@@ -57,6 +60,8 @@ class Settings(context: Context) {
             showCardArt = prefs.getBoolean("showCardArt", d.showCardArt),
             manualClass = prefs.getString("manualClass", null),
             manualDeckCode = prefs.getString("manualDeckCode", null),
+            hudX = prefs.getInt("hudX", d.hudX),
+            hudY = prefs.getInt("hudY", d.hudY),
         )
     }
 
@@ -74,6 +79,8 @@ class Settings(context: Context) {
             .putBoolean("showCardArt", s.showCardArt)
             .putString("manualClass", s.manualClass)
             .putString("manualDeckCode", s.manualDeckCode)
+            .putInt("hudX", s.hudX)
+            .putInt("hudY", s.hudY)
             .apply()
     }
 }

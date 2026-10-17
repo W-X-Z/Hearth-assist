@@ -3,6 +3,7 @@ package com.hearthassist.app.logs
 import com.hearthassist.app.engine.TrackerEngine
 import com.hearthassist.app.settings.LogAccess
 import com.hearthassist.app.settings.Settings
+import com.hearthassist.core.log.LogConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -96,11 +97,11 @@ class LogController(
             }
             val path = HearthstoneFiles.logConfig
             val existing = if (fs.size(path) >= 0) fs.read(path, 0, 512 * 1024)?.toString(Charsets.UTF_8) else null
-            if (HearthstoneFiles.isLogConfigComplete(existing)) return@runCatching "이미 설정되어 있습니다."
-            val merged = HearthstoneFiles.mergeLogConfig(existing)
+            if (LogConfig.isComplete(existing)) return@runCatching "이미 설정되어 있습니다."
+            val merged = LogConfig.merge(existing)
             check(fs.write(path, merged.toByteArray())) { "log.config를 쓸 수 없습니다." }
             val verify = fs.read(path, 0, 512 * 1024)?.toString(Charsets.UTF_8)
-            check(HearthstoneFiles.isLogConfigComplete(verify)) { "log.config 확인에 실패했습니다." }
+            check(LogConfig.isComplete(verify)) { "log.config 확인에 실패했습니다." }
             "log.config를 설정했습니다. 하스스톤을 완전히 종료한 뒤 다시 실행하세요."
         }
     }
@@ -109,6 +110,6 @@ class LogController(
         val fs = obtainFileSystem() ?: return@withContext null
         val path = HearthstoneFiles.logConfig
         if (fs.size(path) < 0) return@withContext false
-        HearthstoneFiles.isLogConfigComplete(fs.read(path, 0, 512 * 1024)?.toString(Charsets.UTF_8))
+        LogConfig.isComplete(fs.read(path, 0, 512 * 1024)?.toString(Charsets.UTF_8))
     }
 }

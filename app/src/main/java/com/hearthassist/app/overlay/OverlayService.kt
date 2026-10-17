@@ -52,7 +52,9 @@ class OverlayService : Service() {
     private var hud: OverlayWindow? = null
     private var badges: OverlayWindow? = null
     private var search: OverlayWindow? = null
-    private val hudDrag = WindowDragController { hud }
+    private val hudDrag = WindowDragController({ hud }) { x, y ->
+        AppGraph.settings.update { it.copy(hudX = x, hudY = y) }
+    }
 
     private var capturer: ScreenCapturer? = null
     private var scanner: DraftScanner? = null
@@ -158,9 +160,10 @@ class OverlayService : Service() {
         badges = OverlayWindow(this, OverlayWindow.params(touchable = false, fullScreen = true)) {
             BadgesContent(ui)
         }.also { it.show() }
+        val s = AppGraph.settings.current
         hud = OverlayWindow(this, OverlayWindow.params(touchable = true).apply {
-            x = (12 * dm.density).toInt()
-            y = (80 * dm.density).toInt()
+            x = s.hudX.takeIf { it >= 0 } ?: (12 * dm.density).toInt()
+            y = s.hudY.takeIf { it >= 0 } ?: (80 * dm.density).toInt()
         }) {
             HudContent(ui, actions, hudDrag)
         }.also { it.show() }

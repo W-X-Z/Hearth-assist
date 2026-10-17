@@ -37,7 +37,10 @@ interface HudActions {
 }
 
 /** Moves an overlay window with the finger, using raw screen coordinates (no jitter). */
-class WindowDragController(private val window: () -> OverlayWindow?) {
+class WindowDragController(
+    private val window: () -> OverlayWindow?,
+    private val onMoved: (x: Int, y: Int) -> Unit = { _, _ -> },
+) {
     private var downX = 0f
     private var downY = 0f
     private var startX = 0
@@ -65,7 +68,10 @@ class WindowDragController(private val window: () -> OverlayWindow?) {
     }
 
     /** Returns true when the gesture was a drag rather than a tap. */
-    fun end(): Boolean = moved
+    fun end(): Boolean {
+        if (moved) window()?.params?.let { onMoved(it.x, it.y) }
+        return moved
+    }
 
     companion object {
         private const val SLOP = 12f
