@@ -82,7 +82,7 @@ core/   순수 Kotlin(JVM): 카드 DB, 로그 파서(Power/Arena/LoadingScreen/D
         덱 코드, 투기장 점수 계산, OCR 카드 매칭. 단위 테스트 포함
 app/    안드로이드 앱(Jetpack Compose): 설정 화면, 오버레이 서비스, Shizuku 파일 서비스,
         MediaProjection 화면 캡처 + ML Kit 한국어 OCR
-tools/  build_card_db.py: 내장 카드 DB(app/src/main/assets/cards.json.gz) 생성
+tools/  build_card_db.py: 내장 카드 DB(app/src/main/assets/carddb.bin) 생성
 ```
 
 ```bash

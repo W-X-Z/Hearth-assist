@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the bundled card database (app/src/main/assets/cards.json.gz).
+"""Build the bundled card database (app/src/main/assets/carddb.bin).
 
 Source: CardDefs.xml from the `hearthstone_data` package on PyPI
 (the same data HearthstoneJSON is generated from).
@@ -56,7 +56,7 @@ def default_carddefs_path():
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else default_carddefs_path()
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out = os.path.join(root_dir, "app", "src", "main", "assets", "cards.json.gz")
+    out = os.path.join(root_dir, "app", "src", "main", "assets", "carddb.bin")
 
     cards = []
     build = None

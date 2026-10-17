@@ -25,5 +25,5 @@ dependencies {
 tasks.test {
     useJUnit()
     // Tests read the bundled card database from the app module.
-    systemProperty("hearthassist.cardsAsset", rootProject.file("app/src/main/assets/cards.json.gz").absolutePath)
+    systemProperty("hearthassist.cardsAsset", rootProject.file("app/src/main/assets/carddb.bin").absolutePath)
 }

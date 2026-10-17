@@ -77,6 +77,7 @@ class CardRepository(private val context: Context) {
     }
 
     companion object {
-        private const val ASSET = "cards.json.gz"
+        // Not ".gz": aapt strips that suffix from asset names. Content is still gzip.
+        private const val ASSET = "carddb.bin"
     }
 }
