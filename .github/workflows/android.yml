@@ -1,0 +1,60 @@
+name: Android APK
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Core unit tests
+        run: ./gradlew :core:test --stacktrace
+
+      - name: Build APK
+        env:
+          HA_VERSION_CODE: ${{ github.run_number }}
+          HA_VERSION_NAME: 0.1.${{ github.run_number }}
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/HearthAssist-0.1.${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HearthAssist-apk
+          path: dist/*.apk
+
+      - name: Publish pre-release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: Hearth Assist 0.1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body: |
+            Branch `${{ github.ref_name }}` · commit ${{ github.sha }}
+            휴대폰에서 APK를 받아 설치하세요 (출처를 알 수 없는 앱 설치 허용 필요).
+          files: dist/*.apk

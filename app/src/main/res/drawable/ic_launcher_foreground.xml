@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Hearth: a flame over a card -->
+    <path
+        android:fillColor="#FFE9C46A"
+        android:pathData="M38,34h32a4,4 0,0 1,4 4v38a4,4 0,0 1,-4 4h-32a4,4 0,0 1,-4 -4v-38a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FF2A1B0F"
+        android:pathData="M41,38h26a2,2 0,0 1,2 2v34a2,2 0,0 1,-2 2h-26a2,2 0,0 1,-2 -2v-34a2,2 0,0 1,2 -2z" />
+    <path
+        android:fillColor="#FFF4A261"
+        android:pathData="M54,44c6,7 10,12 10,18a10,10 0,0 1,-20 0c0,-4 2,-7 4,-9c0,3 1,5 3,6c-1,-6 1,-10 3,-15z" />
+    <path
+        android:fillColor="#FFE76F51"
+        android:pathData="M54,56c3,3 5,5 5,8a5,5 0,0 1,-10 0c0,-3 2,-5 5,-8z" />
+</vector>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hearth Assist</string>
+    <string name="notification_channel">오버레이 실행 중</string>
+    <string name="notification_title">Hearth Assist 실행 중</string>
+    <string name="notification_text">덱 트래커와 투기장 점수 오버레이가 켜져 있습니다</string>
+    <string name="notification_stop">중지</string>
+</resources>
