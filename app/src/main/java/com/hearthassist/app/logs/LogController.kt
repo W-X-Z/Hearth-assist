@@ -82,8 +82,9 @@ class LogController(
     }
 
     private fun direct(): LogFileSystem? {
+        // On Android 11+ another app's data folder lists as null or empty; neither is usable.
         val base = File(HearthstoneFiles.baseDir)
-        return if (base.isDirectory && base.listFiles() != null) DirectFileSystem() else null
+        return if (base.isDirectory && !base.listFiles().isNullOrEmpty()) DirectFileSystem() else null
     }
 
     /** Enables the logs Hearthstone needs to write. Returns a message for the user. */

@@ -47,6 +47,38 @@ class DraftCardMatcherTest {
     }
 
     @Test
+    fun usesRulesTextWhenNameIsUnreadable() {
+        val db = TestCards.db
+        val fireball = db["CS2_029"]!!
+        val missiles = db["EX1_277"]!!
+        val lines = listOf(
+            // The first banner is garbled beyond recognition; its text box is fine.
+            line("#@!", 500, 420),
+            line(fireball.plainText("koKR"), 500, 600, 300),
+            line(missiles.name("koKR"), 1000, 420),
+            line(missiles.plainText("koKR"), 1000, 600, 320),
+            line("얼음창", 1500, 420),
+        )
+        val found = matcher.match(lines, imageWidth = 2400, imageHeight = 1080)
+        assertEquals(listOf("화염구", "신비한 화살", "얼음창"), found.map { it.name })
+        assertTrue(found[0].byText)
+    }
+
+    @Test
+    fun joinsMultiLineTextIntoParagraphs() {
+        val paragraphs = DraftCardMatcher.paragraphs(
+            listOf(
+                line("모든 적에게 3의 피해를", 1000, 600, 320, 36),
+                line("무작위로 나누어 입힙니다.", 1000, 640, 320, 36),
+                line("화염구", 500, 420),
+            ),
+            imageWidth = 2400,
+        )
+        assertEquals(2, paragraphs.size)
+        assertTrue(paragraphs.any { it.text == "모든 적에게 3의 피해를 무작위로 나누어 입힙니다." })
+    }
+
+    @Test
     fun ignoresUnrelatedText() {
         val found = matcher.match(listOf(line("확인", 500, 400), line("12", 900, 400)), 2000, 1000)
         assertTrue(found.isEmpty(), "got $found")
