@@ -33,6 +33,8 @@ data class StatsStatus(
 class ArenaStatsRepository(private val context: Context) {
     private val mutex = Mutex()
     private val scorers = HashMap<String, ArenaScorer>()
+    /** Context -> time of the last failed download, to avoid hammering the server. */
+    private val failures = HashMap<String, Long>()
     private val _status = MutableStateFlow(StatsStatus())
     val status: StateFlow<StatsStatus> = _status.asStateFlow()
 
@@ -52,6 +54,7 @@ class ArenaStatsRepository(private val context: Context) {
         this.mode = mode
         this.period = period
         scorers.clear()
+        failures.clear()
         _status.value = StatsStatus(mode = mode, period = period)
         _version.value++
     }
@@ -72,6 +75,7 @@ class ArenaStatsRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             val keys = scorers.keys.toList().ifEmpty { listOf(GLOBAL) }
             scorers.clear()
+            failures.clear()
             runCatching {
                 for (key in listOf(GLOBAL) + keys.filter { it != GLOBAL }) {
                     download(key)
@@ -87,13 +91,18 @@ class ArenaStatsRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             scorers[context]?.let { return@withContext it }
             val cards = cardsFile(context)
-            val stale = !cards.exists() || System.currentTimeMillis() - cards.lastModified() > MAX_AGE_MS
-            if (stale && allowNetwork) {
-                runCatching { download(context) }.onFailure { e ->
-                    if (context == GLOBAL) {
-                        _status.value = _status.value.copy(loading = false, error = e.message ?: e.toString())
+            val now = System.currentTimeMillis()
+            val stale = !cards.exists() || now - cards.lastModified() > MAX_AGE_MS
+            val recentlyFailed = failures[context]?.let { now - it < RETRY_AFTER_MS } == true
+            if (stale && allowNetwork && !recentlyFailed) {
+                runCatching { download(context) }
+                    .onSuccess { failures.remove(context) }
+                    .onFailure { e ->
+                        failures[context] = now
+                        if (context == GLOBAL) {
+                            _status.value = _status.value.copy(loading = false, error = e.message ?: e.toString())
+                        }
                     }
-                }
             }
             if (!cards.exists()) return@withContext null
             val cardStats: ArenaCardStatsFile? = runCatching { cards.inputStream().use { ArenaStatsParser.parseCardStats(it) } }.getOrNull()
@@ -132,5 +141,6 @@ class ArenaStatsRepository(private val context: Context) {
     companion object {
         private const val GLOBAL = "global"
         private const val MAX_AGE_MS = 12 * 60 * 60 * 1000L
+        private const val RETRY_AFTER_MS = 10 * 60 * 1000L
     }
 }

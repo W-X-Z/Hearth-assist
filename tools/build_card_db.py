@@ -29,6 +29,7 @@ SKIPPED_TYPES = {
 SKIPPED_SETS = {enums.CardSet.LETTUCE, enums.CardSet.MERCENARIES_DEV}
 
 TAG_CARDNAME = enums.GameTag.CARDNAME.value
+TAG_CARDTEXT = enums.GameTag.CARDTEXT.value
 TAG_COST = enums.GameTag.COST.value
 TAG_ATK = enums.GameTag.ATK.value
 TAG_HEALTH = enums.GameTag.HEALTH.value
@@ -68,13 +69,15 @@ def main():
             continue
         tags = {}
         names = {}
+        texts = {}
         for tag in elem.findall("Tag"):
             enum_id = int(tag.get("enumID"))
-            if enum_id == TAG_CARDNAME:
+            if enum_id in (TAG_CARDNAME, TAG_CARDTEXT):
+                target = names if enum_id == TAG_CARDNAME else texts
                 for loc in LOCALES:
                     node = tag.find(loc)
                     if node is not None and node.text:
-                        names[loc] = node.text
+                        target[loc] = node.text
             elif tag.get("type") in ("Int", "Bool"):
                 tags[enum_id] = int(tag.get("value", "0"))
         card_type = tags.get(TAG_CARDTYPE, 0)
@@ -109,6 +112,9 @@ def main():
             card["set"] = card_set_enum.name
         if tags.get(TAG_COLLECTIBLE):
             card["collectible"] = True
+            # Card text helps recognize draft offers by OCR; only needed for collectible cards.
+            if texts:
+                card["text"] = texts
         if tags.get(TAG_TECH_LEVEL):
             card["techLevel"] = tags[TAG_TECH_LEVEL]
         cards.append(card)

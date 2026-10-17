@@ -12,9 +12,14 @@ data class Card(
     val rarity: String?,
     val set: String?,
     val collectible: Boolean,
+    /** Rules text per locale (collectible cards only in the bundled db). */
+    val texts: Map<String, String> = emptyMap(),
 ) {
     fun name(locale: String): String =
         names[locale] ?: names[DEFAULT_LOCALE] ?: names.values.firstOrNull() ?: id
+
+    /** Rules text as shown in game (markup and value placeholders removed). */
+    fun plainText(locale: String): String = cleanText(texts[locale] ?: texts[DEFAULT_LOCALE] ?: "")
 
     val heroClass: HeroClass? get() = HeroClass.fromCardClass(cardClass)
 
@@ -26,6 +31,9 @@ data class Card(
     companion object {
         const val DEFAULT_LOCALE = "enUS"
         private val NON_DRAFT_SETS = setOf("HERO_SKINS", "VANILLA", "CORE_HIDDEN", "PLACEHOLDER_202204")
+        private val MARKUP = Regex("""<[^>]*>|\[x]|\{\d+}|[$#@]""")
+
+        fun cleanText(text: String): String = MARKUP.replace(text, "").replace('\n', ' ').replace('_', ' ')
     }
 }
 

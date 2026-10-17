@@ -29,10 +29,8 @@ object HearthstoneFiles {
 
     private fun serialize(sections: Map<String, Map<String, String>>): String = buildString {
         for ((name, keys) in sections) {
-            append('[').append(name).append("]
-")
-            for ((k, v) in keys) append(k).append('=').append(v).append('
-')
+            append('[').append(name).append("]\n")
+            for ((k, v) in keys) append(k).append('=').append(v).append('\n')
         }
     }
 

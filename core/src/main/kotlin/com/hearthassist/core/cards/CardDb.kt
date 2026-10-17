@@ -37,8 +37,8 @@ class CardDb(cards: Collection<Card>) {
 
     /** Returns a new db where names from [other] are added for cards both dbs know about. */
     fun mergeNames(other: CardDb): CardDb = CardDb(cards.map { card ->
-        val extra = other[card.id]?.names ?: return@map card
-        card.copy(names = card.names + extra)
+        val extra = other[card.id] ?: return@map card
+        card.copy(names = card.names + extra.names, texts = card.texts + extra.texts)
     })
 
     companion object {
@@ -73,6 +73,7 @@ class CardDb(cards: Collection<Card>) {
                     name = JsonObject(c.names.mapValues { JsonPrimitive(it.value) }),
                     type = c.type, cardClass = c.cardClass, cost = c.cost, attack = c.attack,
                     health = c.health, rarity = c.rarity, set = c.set, collectible = c.collectible,
+                    text = if (c.texts.isEmpty()) null else JsonObject(c.texts.mapValues { JsonPrimitive(it.value) }),
                 )
             }
             out.write(json.encodeToString(ListSerializer(RawCard.serializer()), raw).toByteArray())
@@ -102,19 +103,22 @@ internal data class RawCard(
     val rarity: String? = null,
     val set: String? = null,
     val collectible: Boolean = false,
+    val text: JsonElement? = null,
 ) {
     fun toCard(localeHint: String): Card? {
         val cardType = type ?: "INVALID"
         if (cardType == "ENCHANTMENT") return null
-        val names: Map<String, String> = when (val n = name) {
-            is JsonObject -> n.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }.toMap()
-            is JsonPrimitive -> n.contentOrNull?.let { mapOf(localeHint to it) } ?: emptyMap()
-            else -> emptyMap()
-        }
         return Card(
-            id = id, dbfId = dbfId, names = names, type = cardType,
+            id = id, dbfId = dbfId, names = localized(name, localeHint), type = cardType,
             cardClass = cardClass ?: "NEUTRAL", cost = cost, attack = attack, health = health,
             rarity = rarity, set = set, collectible = collectible,
+            texts = if (collectible) localized(text, localeHint) else emptyMap(),
         )
+    }
+
+    private fun localized(value: JsonElement?, localeHint: String): Map<String, String> = when (value) {
+        is JsonObject -> value.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }.toMap()
+        is JsonPrimitive -> value.contentOrNull?.let { mapOf(localeHint to it) } ?: emptyMap()
+        else -> emptyMap()
     }
 }
