@@ -68,9 +68,20 @@ class OverlayWindow(
         if (isShown) runCatching { wm.updateViewLayout(view, params) }
     }
 
-    fun moveBy(dx: Int, dy: Int) {
-        params.x += dx
-        params.y += dy
+    /** Keeps the window fully on screen (after drags, restores and rotation). */
+    fun clampToScreen() {
+        val bounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wm.currentWindowMetrics.bounds
+        } else {
+            val dm = view.resources.displayMetrics
+            Rect(0, 0, dm.widthPixels, dm.heightPixels)
+        }
+        // Before the first layout the size is unknown; assume a small bubble.
+        val minSize = (48 * view.resources.displayMetrics.density).toInt()
+        val w = if (view.width > 0) view.width else minSize
+        val h = if (view.height > 0) view.height else minSize
+        params.x = params.x.coerceIn(0, (bounds.width() - w).coerceAtLeast(0))
+        params.y = params.y.coerceIn(0, (bounds.height() - h).coerceAtLeast(0))
         update()
     }
 

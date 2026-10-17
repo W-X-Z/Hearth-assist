@@ -4,7 +4,9 @@ import com.hearthassist.app.engine.TrackerEngine
 import com.hearthassist.app.settings.LogAccess
 import com.hearthassist.app.settings.Settings
 import com.hearthassist.core.log.LogConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -44,7 +46,13 @@ class LogController(
 
     fun start() {
         if (job?.isActive == true) return
+        launchLoop(previous = job)
+    }
+
+    private fun launchLoop(previous: Job?) {
         job = scope.launch(Dispatchers.IO) {
+            // The old watcher must be gone before a new one resets the parsers.
+            previous?.cancelAndJoin()
             while (isActive) {
                 _status.value = LogStatus(LogState.CONNECTING)
                 val fs = obtainFileSystem()
@@ -53,9 +61,15 @@ class LogController(
                     delay(5_000)
                     continue
                 }
-                LogWatcher(fs, engine) { state, dir, last ->
-                    _status.value = LogStatus(state, fs.label, dir, last)
-                }.run()
+                try {
+                    LogWatcher(fs, engine) { state, dir, last ->
+                        _status.value = LogStatus(state, fs.label, dir, last)
+                    }.run()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("HearthAssist", "log watcher failed", e)
+                }
                 delay(1_000)
             }
         }
@@ -68,9 +82,10 @@ class LogController(
     }
 
     fun restart() {
-        if (job == null) return
-        stop()
-        start()
+        val old = job ?: return
+        old.cancel()
+        _status.value = LogStatus(LogState.CONNECTING)
+        launchLoop(previous = old)
     }
 
     suspend fun obtainFileSystem(): LogFileSystem? = withContext(Dispatchers.IO) {

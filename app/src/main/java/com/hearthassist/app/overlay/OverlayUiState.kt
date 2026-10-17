@@ -62,9 +62,9 @@ class WindowDragController(
         val dy = rawY - downY
         if (!moved && abs(dx) < SLOP && abs(dy) < SLOP) return
         moved = true
-        w.params.x = (startX + dx).roundToInt().coerceAtLeast(0)
-        w.params.y = (startY + dy).roundToInt().coerceAtLeast(0)
-        w.update()
+        w.params.x = (startX + dx).roundToInt()
+        w.params.y = (startY + dy).roundToInt()
+        w.clampToScreen()
     }
 
     /** Returns true when the gesture was a drag rather than a tap. */

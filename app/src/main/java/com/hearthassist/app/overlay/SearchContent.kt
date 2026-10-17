@@ -28,6 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,6 +85,15 @@ fun SearchContent(actions: HudActions) {
     Column(
         modifier = Modifier
             .width(320.dp)
+            // No Activity here, so handle Back ourselves (the IME consumes the first press).
+            .onPreviewKeyEvent { e ->
+                if (e.key == Key.Back && e.type == KeyEventType.KeyUp) {
+                    actions.closeSearch()
+                    true
+                } else {
+                    false
+                }
+            }
             .clip(RoundedCornerShape(12.dp))
             .background(HaColors.Surface)
             .border(1.dp, HaColors.Gold.copy(alpha = 0.6f), RoundedCornerShape(12.dp))

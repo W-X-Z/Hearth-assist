@@ -8,6 +8,8 @@ import com.hearthassist.app.logs.LogController
 import com.hearthassist.app.logs.ShizukuAccess
 import com.hearthassist.app.settings.Settings
 import com.hearthassist.core.cards.HeroClass
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,7 +32,10 @@ object AppGraph {
     lateinit var logs: LogController
         private set
 
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            CoroutineExceptionHandler { _, e -> Log.e("HearthAssist", "background task failed", e) },
+    )
 
     private var initialized = false
 

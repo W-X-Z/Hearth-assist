@@ -1,6 +1,7 @@
 package com.hearthassist.core.log
 
 import com.hearthassist.core.cards.CardDb
+import com.hearthassist.core.deck.DecodedDeck
 import com.hearthassist.core.deck.Deckstring
 import com.hearthassist.core.game.Decklist
 
@@ -14,8 +15,25 @@ import com.hearthassist.core.game.Decklist
  * ```
  */
 class DecksLogParser(private val cards: () -> CardDb) {
-    var lastDeck: Decklist? = null
-        private set
+    private var lastDecoded: DecodedDeck? = null
+    private var lastName: String? = null
+
+    /**
+     * The deck of the latest "Finding Game With Deck". Card ids are resolved on access, so a
+     * deck read before the card database finished loading still resolves later.
+     */
+    val lastDeck: Decklist?
+        get() {
+            val decoded = lastDecoded ?: return null
+            val db = cards()
+            val list = HashMap<String, Int>()
+            for ((dbfId, count) in decoded.cards) {
+                val id = db.byDbf(dbfId)?.id ?: continue
+                list[id] = (list[id] ?: 0) + count
+            }
+            return Decklist(lastName, list, decoded.heroes.firstOrNull()?.let { db.byDbf(it)?.id })
+        }
+
     var revision: Long = 0
         private set
 
@@ -37,13 +55,8 @@ class DecksLogParser(private val cards: () -> CardDb) {
             else -> {
                 expecting = false
                 val decoded = runCatching { Deckstring.decode(line) }.getOrNull() ?: return
-                val db = cards()
-                val list = HashMap<String, Int>()
-                for ((dbfId, count) in decoded.cards) {
-                    val id = db.byDbf(dbfId)?.id ?: continue
-                    list[id] = (list[id] ?: 0) + count
-                }
-                lastDeck = Decklist(pendingName, list, decoded.heroes.firstOrNull()?.let { db.byDbf(it)?.id })
+                lastDecoded = decoded
+                lastName = pendingName
                 revision++
             }
         }

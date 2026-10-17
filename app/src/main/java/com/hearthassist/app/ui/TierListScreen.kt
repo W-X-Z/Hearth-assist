@@ -48,7 +48,9 @@ fun TierListScreen(onBack: () -> Unit, contentPadding: PaddingValues) {
     var scorer by remember { mutableStateOf<ArenaScorer?>(null) }
 
     LaunchedEffect(heroClass, version) {
-        scorer = AppGraph.stats.cached(heroClass) ?: AppGraph.stats.scorer(heroClass)
+        // Cheap when cached; loads class-specific numbers otherwise.
+        scorer = AppGraph.stats.cached(heroClass)
+        scorer = AppGraph.stats.scorer(heroClass) ?: scorer
     }
 
     val rows = remember(scorer, db, settings.gameLocale, query, heroClass) {

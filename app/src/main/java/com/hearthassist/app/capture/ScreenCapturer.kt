@@ -6,6 +6,7 @@ import android.graphics.PixelFormat
 import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.os.Build
@@ -16,8 +17,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Mirrors the screen into an [ImageReader] and hands out bitmaps on request. Frames are only
- * converted when someone asks for one, so an idle capture costs almost nothing.
+ * Mirrors the screen into an [ImageReader] and hands out bitmaps on request. The newest frame
+ * is kept as an [Image] and only converted when someone asks, so an idle capture costs almost
+ * nothing and a static screen still yields a fresh bitmap.
+ *
+ * Everything touching the reader, the display and the held image runs on [handler]'s thread.
  */
 class ScreenCapturer(
     private val context: Context,
@@ -28,21 +32,24 @@ class ScreenCapturer(
     private val handler = Handler(thread.looper)
     private var reader: ImageReader? = null
     private var display: VirtualDisplay? = null
+    private var heldImage: Image? = null
     private var width = 0
     private var height = 0
+    private var request: CompletableDeferred<Bitmap?>? = null
 
-    @Volatile private var request: CompletableDeferred<Bitmap?>? = null
-    @Volatile private var lastFrame: Bitmap? = null
+    @Volatile private var released = false
     @Volatile var running = false
         private set
 
     private val callback = object : MediaProjection.Callback() {
         override fun onStop() {
-            release()
+            // Called on [handler] (the user stopped sharing, or another app took over).
+            teardown(stopProjection = false)
             onStopped()
         }
     }
 
+    /** Must be called once, right after the projection was obtained. */
     fun start() {
         // Required before createVirtualDisplay on Android 14+.
         projection.registerCallback(callback, handler)
@@ -59,14 +66,38 @@ class ScreenCapturer(
     }
 
     /** The latest screen content, or null if nothing arrived within [timeoutMs]. */
-    suspend fun capture(timeoutMs: Long = 600): Bitmap? {
+    suspend fun capture(timeoutMs: Long = 800): Bitmap? {
         if (!running) return null
-        handler.post { ensureSize() }
         val deferred = CompletableDeferred<Bitmap?>()
-        request = deferred
+        handler.post {
+            if (!running) {
+                deferred.complete(null)
+                return@post
+            }
+            ensureSize()
+            request?.complete(null)
+            request = deferred
+            heldImage?.let { deliver(it) }
+        }
         val frame = withTimeoutOrNull(timeoutMs) { deferred.await() }
+        if (frame == null) handler.post { if (request === deferred) request = null }
+        return frame
+    }
+
+    private fun deliver(image: Image) {
+        val pending = request ?: return
         request = null
-        return frame ?: lastFrame?.takeIf { !it.isRecycled }?.let { it.copy(it.config ?: Bitmap.Config.ARGB_8888, false) }
+        pending.complete(runCatching { toBitmap(image) }.getOrNull())
+    }
+
+    private fun toBitmap(image: Image): Bitmap {
+        val plane = image.planes[0]
+        val pixelStride = plane.pixelStride
+        val rowPadding = plane.rowStride - pixelStride * image.width
+        val padded = Bitmap.createBitmap(image.width + rowPadding / pixelStride, image.height, Bitmap.Config.ARGB_8888)
+        padded.copyPixelsFromBuffer(plane.buffer.rewind())
+        if (rowPadding == 0) return padded
+        return Bitmap.createBitmap(padded, 0, 0, image.width, image.height).also { padded.recycle() }
     }
 
     /** Follows rotation: Hearthstone runs in landscape, the phone may have started in portrait. */
@@ -76,6 +107,8 @@ class ScreenCapturer(
         val d = display ?: return
         width = size.x
         height = size.y
+        heldImage?.close()
+        heldImage = null
         val old = reader
         val r = newReader(width, height)
         reader = r
@@ -85,23 +118,17 @@ class ScreenCapturer(
     }
 
     private fun newReader(w: Int, h: Int): ImageReader =
-        ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2).apply {
+        // One image is held between frames, so keep room for acquireLatestImage().
+        ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3).apply {
             setOnImageAvailableListener({ ir ->
-                val image = runCatching { ir.acquireLatestImage() }.getOrNull() ?: return@setOnImageAvailableListener
+                if (!running || ir !== reader) return@setOnImageAvailableListener
                 try {
-                    val pending = request ?: return@setOnImageAvailableListener
-                    val plane = image.planes[0]
-                    val pixelStride = plane.pixelStride
-                    val rowPadding = plane.rowStride - pixelStride * image.width
-                    val padded = Bitmap.createBitmap(image.width + rowPadding / pixelStride, image.height, Bitmap.Config.ARGB_8888)
-                    padded.copyPixelsFromBuffer(plane.buffer)
-                    val bitmap = if (rowPadding == 0) padded else Bitmap.createBitmap(padded, 0, 0, image.width, image.height).also { padded.recycle() }
-                    lastFrame?.recycle()
-                    lastFrame = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-                    request = null
-                    pending.complete(bitmap)
-                } finally {
-                    image.close()
+                    val image = ir.acquireLatestImage() ?: return@setOnImageAvailableListener
+                    heldImage?.close()
+                    heldImage = image
+                    deliver(image)
+                } catch (e: IllegalStateException) {
+                    // Reader closed or out of buffers; the next frame will retry.
                 }
             }, handler)
         }
@@ -119,21 +146,26 @@ class ScreenCapturer(
         }
     }
 
+    /** Stops capturing and releases the projection. Safe to call more than once. */
     fun stop() {
-        if (!running) return
-        runCatching { projection.unregisterCallback(callback) }
-        release()
-        runCatching { projection.stop() }
+        running = false
+        handler.post { teardown(stopProjection = true) }
     }
 
-    private fun release() {
+    private fun teardown(stopProjection: Boolean) {
+        if (released) return
+        released = true
         running = false
+        runCatching { projection.unregisterCallback(callback) }
         runCatching { display?.release() }
         display = null
+        runCatching { heldImage?.close() }
+        heldImage = null
         runCatching { reader?.close() }
         reader = null
         request?.complete(null)
         request = null
+        if (stopProjection) runCatching { projection.stop() }
         thread.quitSafely()
     }
 }

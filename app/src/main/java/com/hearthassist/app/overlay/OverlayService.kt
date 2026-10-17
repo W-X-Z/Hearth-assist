@@ -9,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
@@ -59,6 +60,7 @@ class OverlayService : Service() {
     private var capturer: ScreenCapturer? = null
     private var scanner: DraftScanner? = null
     private var scanJob: Job? = null
+    private var prefetchJob: Job? = null
     private var misses = 0
 
     private val actions = object : HudActions {
@@ -108,6 +110,12 @@ class OverlayService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Rotation: keep the HUD on screen.
+        hud?.clampToScreen()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -166,7 +174,10 @@ class OverlayService : Service() {
             y = s.hudY.takeIf { it >= 0 } ?: (80 * dm.density).toInt()
         }) {
             HudContent(ui, actions, hudDrag)
-        }.also { it.show() }
+        }.also {
+            it.show()
+            it.clampToScreen()
+        }
     }
 
     private fun showSearch() {
@@ -226,6 +237,7 @@ class OverlayService : Service() {
         runCatching { c.start() }.onFailure {
             ui.message.value = "화면 인식 오류: ${it.message}"
             c.stop()
+            startInForeground(withProjection = false)
             return
         }
         capturer = c
@@ -249,10 +261,12 @@ class OverlayService : Service() {
     private fun stopCapturing() {
         scanJob?.cancel()
         scanJob = null
-        capturer?.stop()
+        val c = capturer ?: return
+        c.stop()
         capturer = null
         ui.capturing.value = false
         ui.scan.value = null
+        if (_running.value) startInForeground(withProjection = false)
     }
 
     private fun startScanLoop() {
@@ -291,8 +305,12 @@ class OverlayService : Service() {
                 if (manual) ui.message.value = "화면을 가져오지 못했습니다."
                 return null
             }
+            // Never wait for downloads here: use what is cached and fetch the rest in background.
             val heroClass = AppGraph.effectiveClass()
-            val scorer = AppGraph.stats.scorer(heroClass)
+            val scorer = AppGraph.stats.cached(heroClass)
+            if (prefetchJob?.isActive != true) {
+                prefetchJob = AppGraph.scope.launch { AppGraph.stats.scorer(heroClass) }
+            }
             val exclude = listOfNotNull(hud?.screenRect(), search?.screenRect())
             val s = AppGraph.settings.current
             val result = withContext(Dispatchers.Default) {

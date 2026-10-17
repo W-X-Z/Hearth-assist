@@ -19,9 +19,10 @@ class LogWatcher(
         var caughtUp = false
         val partial = ByteArrayOutputStream()
 
-        fun reset() {
+        /** [live]: content read from now on is new (not history to catch up on). */
+        fun reset(live: Boolean) {
             offset = 0
-            caughtUp = false
+            caughtUp = live
             partial.reset()
         }
     }
@@ -30,43 +31,60 @@ class LogWatcher(
     private var dir: String? = null
     private var lastDirCheck = 0L
     private var lastActivity = 0L
+    /** True once the logs that existed at start-up have been read. */
+    private var initialCatchUpDone = false
 
     /** Runs until cancelled or the file system dies. */
     suspend fun run() {
         while (currentCoroutineContext().isActive) {
             if (fs is FileServiceClient && !fs.isAlive) return
-            tick()
+            try {
+                tick()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A flaky binder or a parser surprise must not kill the watcher.
+                android.util.Log.w("HearthAssist", "log watcher tick failed", e)
+            }
             delay(POLL_MS)
         }
     }
 
-    private fun tick() {
+    private suspend fun tick() {
         val now = SystemClock.elapsedRealtime()
         if (dir == null || now - lastDirCheck > DIR_CHECK_MS) {
             lastDirCheck = now
             val found = locateLogDir()
             if (found != dir) {
                 dir = found
-                tails.forEach { it.reset() }
+                // A folder appearing later is a new Hearthstone session: everything in it is live.
+                tails.forEach { it.reset(live = initialCatchUpDone) }
                 engine.resetAll()
             }
         }
         val d = dir
         if (d == null) {
-            onStatus(LogState.NO_LOGS, null, lastActivity)
+            initialCatchUpDone = true
+            report(LogState.NO_LOGS, null)
             return
         }
         for (t in tails) {
             val path = "$d/${t.kind.fileName}"
             val size = fs.size(path)
-            if (size < 0) continue
+            if (size < 0) {
+                // Not written yet: whatever appears later is live.
+                t.caughtUp = true
+                continue
+            }
             if (size < t.offset) {
-                // Hearthstone restarted and truncated the file.
-                t.reset()
+                // Hearthstone restarted and truncated the file; the new content is live.
+                t.reset(live = true)
                 engine.reset(t.kind)
             }
             var budget = MAX_BYTES_PER_TICK
             while (t.offset < size && budget > 0) {
+                // Stop feeding as soon as a restart cancelled us.
+                if (!currentCoroutineContext().isActive) return
                 val chunk = fs.read(path, t.offset, CHUNK) ?: break
                 if (chunk.isEmpty()) break
                 t.offset += chunk.size
@@ -83,8 +101,13 @@ class LogWatcher(
             }
             if (t.offset >= size) t.caughtUp = true
         }
+        if (tails.all { it.caughtUp }) initialCatchUpDone = true
         engine.publish()
-        onStatus(LogState.WATCHING, d, lastActivity)
+        report(LogState.WATCHING, d)
+    }
+
+    private suspend fun report(state: LogState, dir: String?) {
+        if (currentCoroutineContext().isActive) onStatus(state, dir, lastActivity)
     }
 
     private fun splitLines(t: Tail, chunk: ByteArray): List<String> {

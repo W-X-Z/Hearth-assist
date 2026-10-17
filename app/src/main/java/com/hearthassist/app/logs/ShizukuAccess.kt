@@ -10,6 +10,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 
@@ -27,7 +29,8 @@ class ShizukuAccess(private val context: Context) {
     val state: StateFlow<ShizukuState> = _state.asStateFlow()
 
     @Volatile private var client: FileServiceClient? = null
-    private var pending: CompletableDeferred<FileServiceClient?>? = null
+    @Volatile private var pending: CompletableDeferred<FileServiceClient?>? = null
+    private val connectLock = Mutex()
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
         ComponentName(context.packageName, FileUserService::class.java.name),
@@ -61,31 +64,36 @@ class ShizukuAccess(private val context: Context) {
     }
 
     fun refresh() {
-        _state.value = when {
-            !isInstalled() && !Shizuku.pingBinder() -> ShizukuState.NOT_INSTALLED
-            !Shizuku.pingBinder() -> ShizukuState.NOT_RUNNING
-            Shizuku.isPreV11() || Shizuku.getVersion() < 11 -> ShizukuState.OUTDATED
-            Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED -> ShizukuState.NO_PERMISSION
-            else -> ShizukuState.READY
+        _state.value = try {
+            when {
+                !isInstalled() && !Shizuku.pingBinder() -> ShizukuState.NOT_INSTALLED
+                !Shizuku.pingBinder() -> ShizukuState.NOT_RUNNING
+                Shizuku.isPreV11() || Shizuku.getVersion() < 11 -> ShizukuState.OUTDATED
+                Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED -> ShizukuState.NO_PERMISSION
+                else -> ShizukuState.READY
+            }
+        } catch (e: RuntimeException) {
+            // Shizuku died between calls (e.g. wireless debugging dropped).
+            ShizukuState.NOT_RUNNING
         }
     }
 
     fun requestPermission() {
-        if (Shizuku.pingBinder() && !Shizuku.isPreV11()) {
-            Shizuku.requestPermission(REQUEST_CODE)
+        runCatching {
+            if (Shizuku.pingBinder() && !Shizuku.isPreV11()) Shizuku.requestPermission(REQUEST_CODE)
         }
     }
 
     /** Binds (or reuses) the file service. Must not be called on the main thread. */
-    suspend fun connect(): FileServiceClient? {
+    suspend fun connect(): FileServiceClient? = connectLock.withLock {
         refresh()
-        if (_state.value != ShizukuState.READY) return null
-        client?.takeIf { it.isAlive }?.let { return it }
+        if (_state.value != ShizukuState.READY) return@withLock null
+        client?.takeIf { it.isAlive }?.let { return@withLock it }
         val deferred = CompletableDeferred<FileServiceClient?>()
         pending = deferred
-        runCatching { Shizuku.bindUserService(userServiceArgs, connection) }
-            .onFailure { return null }
-        return withTimeoutOrNull(10_000) { deferred.await() }
+        val bound = runCatching { Shizuku.bindUserService(userServiceArgs, connection) }.isSuccess
+        if (!bound) return@withLock null
+        withTimeoutOrNull(10_000) { deferred.await() } ?: client?.takeIf { it.isAlive }
     }
 
     fun disconnect() {
